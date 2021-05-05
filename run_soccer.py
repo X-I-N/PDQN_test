@@ -81,6 +81,7 @@ def make_env(scale_actions):
 @click.option('--initial-memory-threshold', default=1000, help='Number of transitions required to start learning.',
               type=int)
 @click.option('--replay-memory-size', default=500000, help='Replay memory size in transitions.', type=int)  # 500000
+@click.option('--epsilon-start', default=0.95, help='Initial epsilon value.', type=float)
 @click.option('--epsilon-steps', default=1000, help='Number of episodes over which to linearly anneal epsilon.',
               type=int)
 @click.option('--epsilon-final', default=0.02, help='Final epsilon value.', type=float)
@@ -95,7 +96,7 @@ def make_env(scale_actions):
 @click.option('--save-dir', default="results/soccer", help='Output directory.', type=str)
 @click.option('--title', default="PDQN", help="Prefix of output files", type=str)
 def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_threshold, replay_memory_size,
-        epsilon_steps, learning_rate_actor, learning_rate_actor_param, title, epsilon_final, clip_grad, beta,
+        epsilon_steps, learning_rate_actor, learning_rate_actor_param, title, epsilon_start, epsilon_final, clip_grad, beta,
         scale_actions, evaluation_episodes, update_ratio, save_freq, save_dir, layers):
     if save_freq > 0 and save_dir:
         save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
@@ -117,6 +118,7 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
         batch_size=batch_size,
         learning_rate_actor=learning_rate_actor,  # 0.0001
         learning_rate_actor_param=learning_rate_actor_param,  # 0.001
+        epsilon_initial=epsilon_start,
         epsilon_steps=epsilon_steps,
         epsilon_final=epsilon_final,
         gamma=gamma,  # 0.99
