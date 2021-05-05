@@ -7,6 +7,7 @@ from wrappers import SoccerScaledParameterisedActionWrapper
 import gym
 import gym_soccer
 from gym.wrappers import Monitor
+from agents.nstep_pdqn import PDQNNStepAgent
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
@@ -77,45 +78,25 @@ def make_env(scale_actions):
 @click.option('--update-ratio', default=0.1, help='Ratio of updates to samples.', type=float)
 @click.option('--inverting-gradients', default=True,
               help='Use inverting gradients scheme instead of squashing function.', type=bool)
-@click.option('--initial-memory-threshold', default=32, help='Number of transitions required to start learning.',
+@click.option('--initial-memory-threshold', default=1000, help='Number of transitions required to start learning.',
               type=int)
-@click.option('--use-ornstein-noise', default=False,
-              help='Use Ornstein noise instead of epsilon-greedy with uniform random exploration.', type=bool)
 @click.option('--replay-memory-size', default=500000, help='Replay memory size in transitions.', type=int)  # 500000
 @click.option('--epsilon-steps', default=1000, help='Number of episodes over which to linearly anneal epsilon.',
               type=int)
 @click.option('--epsilon-final', default=0.02, help='Final epsilon value.', type=float)
-@click.option('--tau-actor', default=0.001, help='Soft target network update averaging factor.', type=float)
-@click.option('--tau-actor-param', default=0.001, help='Soft target network update averaging factor.',
-              type=float)  # 0.001
 @click.option('--learning-rate-actor', default=0.001, help="Actor network learning rate.", type=float)
 @click.option('--learning-rate-actor-param', default=0.00001, help="Critic network learning rate.", type=float)
 @click.option('--clip-grad', default=1., help="Gradient clipping.", type=float)  # 1 better than 10.
 @click.option('--beta', default=0.2, help='Averaging factor for on-policy and off-policy targets.', type=float)  # 0.5
 @click.option('--scale-actions', default=True, help="Scale actions.", type=bool)
-@click.option('--split', default=False, help='Separate action-parameter inputs.', type=bool)
-@click.option('--multipass', default=False, help='Separate action-parameter inputs using multiple Q-network passes.',
-              type=bool)
-@click.option('--indexed', default=False, help='Indexed loss function.', type=bool)
-@click.option('--weighted', default=False, help='Naive weighted loss function.', type=bool)
-@click.option('--average', default=False, help='Average weighted loss function.', type=bool)
-@click.option('--random-weighted', default=False, help='Randomly weighted loss function.', type=bool)
-@click.option('--zero-index-gradients', default=False,
-              help="Whether to zero all gradients for action-parameters not corresponding to the chosen action.",
-              type=bool)
-@click.option('--action-input-layer', default=0,
-              help='Which layer to input action parameters at when using split Q-networks.', type=int)
 @click.option('--layers', default="[256,128,64]", help='Duplicate action-parameter inputs.',
               cls=ClickPythonLiteralOption)
 @click.option('--save-freq', default=0, help='How often to save models (0 = never).', type=int)
 @click.option('--save-dir', default="results/soccer", help='Output directory.', type=str)
 @click.option('--title', default="PDQN", help="Prefix of output files", type=str)
 def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_threshold, replay_memory_size,
-        epsilon_steps, tau_actor, tau_actor_param, use_ornstein_noise, learning_rate_actor, learning_rate_actor_param,
-        title, epsilon_final,
-        clip_grad, beta, scale_actions, split, indexed, zero_index_gradients, action_input_layer,
-        evaluation_episodes, multipass, weighted, average, random_weighted, update_ratio,
-        save_freq, save_dir, layers):
+        epsilon_steps, learning_rate_actor, learning_rate_actor_param, title, epsilon_final, clip_grad, beta,
+        scale_actions, evaluation_episodes, update_ratio, save_freq, save_dir, layers):
     if save_freq > 0 and save_dir:
         save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
         os.makedirs(save_dir, exist_ok=True)
@@ -125,39 +106,25 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
     env = Monitor(env, directory=os.path.join(dir, str(seed)), video_callable=False, write_upon_reset=False, force=True)
     np.random.seed(seed)
 
-    from agents.nstep_pdqn import PDQNNStepAgent
-    assert not (split and multipass)
     agent_class = PDQNNStepAgent
-    title = "MP-DQN"
 
     agent = agent_class(
         env.observation_space, env.action_space,
         actor_kwargs={"hidden_layers": layers,
-                      'action_input_layer': action_input_layer,
-                      'activation': "relu",
-                      'output_layer_init_std': 0.01},
+                      'activation': "relu", },
         actor_param_kwargs={"hidden_layers": layers,
-                            'activation': "relu",
-                            'output_layer_init_std': 0.01},
+                            'activation': "relu", },
         batch_size=batch_size,
         learning_rate_actor=learning_rate_actor,  # 0.0001
         learning_rate_actor_param=learning_rate_actor_param,  # 0.001
         epsilon_steps=epsilon_steps,
         epsilon_final=epsilon_final,
         gamma=gamma,  # 0.99
-        tau_actor=tau_actor,
-        tau_actor_param=tau_actor_param,
         clip_grad=clip_grad,
         beta=beta,
-        indexed=indexed,
-        weighted=weighted,
-        average=average,
-        random_weighted=random_weighted,
         initial_memory_threshold=initial_memory_threshold,
-        use_ornstein_noise=use_ornstein_noise,
         replay_memory_size=replay_memory_size,
         inverting_gradients=inverting_gradients,
-        zero_index_gradients=zero_index_gradients,
         seed=seed)
     print(agent)
     network_trainable_parameters = sum(p.numel() for p in agent.actor.parameters() if p.requires_grad)
@@ -182,7 +149,6 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
         act, act_param, all_action_parameters = agent.act(state)
         action = pad_action(act, act_param)
         episode_reward = 0.
-        agent.start_episode()
         transitions = []
         for i_step in range(max_steps):
             next_state, reward, terminal, info = env.step(action)
@@ -229,8 +195,7 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
 
         if i_eps % 100 == 0 and i_eps > 0:
             print('Episode: ', i_eps, 'R: ', moving_avg_rewards[-1], 'n_steps: ',
-                  np.array(timesteps[-100]).mean(),
-                  'epsilon: ', agent.epsilon)
+                  np.array(timesteps[-100]).mean(), 'epsilon: ', agent.epsilon)
 
         writer.add_scalars('rewards', {'raw': returns[-1], 'moving_average': moving_avg_rewards[-1]}, i_eps)
         writer.add_scalar('step_of_each_trials', timesteps[-1], i_eps)

@@ -12,8 +12,7 @@ from agents.memory.memory import Memory, ReplayBuffer, NStepReplayBuffer
 
 class QActor(nn.Module):
 
-    def __init__(self, state_size, action_size, action_parameter_size, hidden_layers=(100,), action_input_layer=0,
-                 output_layer_init_std=None, activation="relu", **kwargs):
+    def __init__(self, state_size, action_size, action_parameter_size, hidden_layers=(100,), activation="relu"):
         super(QActor, self).__init__()
         self.state_size = state_size
         self.action_size = action_size
@@ -51,8 +50,7 @@ class QActor(nn.Module):
 
 class ParamActor(nn.Module):
 
-    def __init__(self, state_size, action_size, action_parameter_size, hidden_layers, squashing_function=False,
-                 output_layer_init_std=None, init_type="kaiming", activation="relu", init_std=None):
+    def __init__(self, state_size, action_size, action_parameter_size, hidden_layers, activation="relu"):
         super(ParamActor, self).__init__()
 
         self.state_size = state_size
@@ -98,11 +96,6 @@ class ParamActor(nn.Module):
 
 
 class PDQNAgent(Agent):
-    """
-    DDPG actor-critic agent for parameterised action spaces
-    [Hausknecht and Stone 2016]
-    """
-
     NAME = "P-DQN Agent"
 
     def __init__(self,
@@ -117,22 +110,13 @@ class PDQNAgent(Agent):
                  epsilon_steps=10000,
                  batch_size=64,
                  gamma=0.99,
-                 tau_actor=0.01,  # Polyak averaging factor for copying target weights
-                 tau_actor_param=0.001,
                  replay_memory_size=1000000,
                  learning_rate_actor=0.0001,
                  learning_rate_actor_param=0.00001,
                  initial_memory_threshold=0,
-                 use_ornstein_noise=False,
-                 # if false, uses epsilon-greedy with uniform-random action-parameter exploration
                  loss_func=F.mse_loss,  # F.mse_loss
                  clip_grad=10,
                  inverting_gradients=False,
-                 zero_index_gradients=False,
-                 indexed=False,
-                 weighted=False,
-                 average=False,
-                 random_weighted=False,
                  device="cuda" if torch.cuda.is_available() else "cpu",
                  seed=None):
         super(PDQNAgent, self).__init__(observation_space, action_space)
@@ -144,7 +128,7 @@ class PDQNAgent(Agent):
         self.action_max = torch.from_numpy(np.ones((self.num_actions,))).float().to(device)
         self.action_min = -self.action_max.detach()
         self.action_range = (self.action_max - self.action_min).detach()
-        print([self.action_space.spaces[i].high for i in range(1, self.num_actions + 1)])
+        # print([self.action_space.spaces[i].high for i in range(1, self.num_actions + 1)])
         self.action_parameter_max_numpy = np.concatenate(
             [self.action_space.spaces[i].high for i in range(1, self.num_actions + 1)]).ravel()
         self.action_parameter_min_numpy = np.concatenate(
@@ -157,11 +141,6 @@ class PDQNAgent(Agent):
         self.epsilon_initial = epsilon_initial
         self.epsilon_final = epsilon_final
         self.epsilon_steps = epsilon_steps
-        self.indexed = indexed
-        self.weighted = weighted
-        self.average = average
-        self.random_weighted = random_weighted
-        assert (weighted ^ average ^ random_weighted) or not (weighted or average or random_weighted)
 
         self.action_parameter_offsets = self.action_parameter_sizes.cumsum()
         self.action_parameter_offsets = np.insert(self.action_parameter_offsets, 0, 0)
@@ -173,21 +152,16 @@ class PDQNAgent(Agent):
         self.learning_rate_actor = learning_rate_actor
         self.learning_rate_actor_param = learning_rate_actor_param
         self.inverting_gradients = inverting_gradients
-        self.tau_actor = tau_actor
-        self.tau_actor_param = tau_actor_param
         self._step = 0
         self._episode = 0
         self.updates = 0
         self.clip_grad = clip_grad
-        self.zero_index_gradients = zero_index_gradients
 
         self.np_random = None
         self.seed = seed
         self._seed(seed)
 
-        self.use_ornstein_noise = use_ornstein_noise
-
-        print(self.num_actions + self.action_parameter_size)
+        # print(self.num_actions + self.action_parameter_size)
         self.replay_memory = Memory(replay_memory_size, observation_space.shape, (1 + self.action_parameter_size,),
                                     next_actions=False)
         self.actor = actor_class(self.observation_space.shape[0], self.num_actions, self.action_parameter_size,
@@ -200,14 +174,9 @@ class PDQNAgent(Agent):
                                              self.action_parameter_size, **actor_param_kwargs).to(device)
         self.actor_param_target = actor_param_class(self.observation_space.shape[0], self.num_actions,
                                                     self.action_parameter_size, **actor_param_kwargs).to(device)
-
         self.actor_param_target.eval()
 
         self.loss_func = loss_func  # l1_smooth_loss performs better but original paper used MSE
-
-        # Original DDPG paper [Lillicrap et al. 2016] used a weight decay of 0.01 for Q (critic)
-        # but setting weight_decay=0.01 on the critic_optimiser seems to perform worse...
-        # using AMSgrad ("fixed" version of Adam, amsgrad=True) doesn't seem to help either...
         self.actor_optimiser = optim.Adam(self.actor.parameters(),
                                           lr=self.learning_rate_actor)  # , betas=(0.95, 0.999))
         self.actor_param_optimiser = optim.Adam(self.actor_param.parameters(),
@@ -220,8 +189,6 @@ class PDQNAgent(Agent):
                 "Actor Alpha: {}\n".format(self.learning_rate_actor) + \
                 "Actor Param Alpha: {}\n".format(self.learning_rate_actor_param) + \
                 "Gamma: {}\n".format(self.gamma) + \
-                "Tau (actor): {}\n".format(self.tau_actor) + \
-                "Tau (actor-params): {}\n".format(self.tau_actor_param) + \
                 "Inverting Gradients: {}\n".format(self.inverting_gradients) + \
                 "Replay Memory: {}\n".format(self.replay_memory_size) + \
                 "Batch Size: {}\n".format(self.batch_size) + \
@@ -230,8 +197,6 @@ class PDQNAgent(Agent):
                 "epsilon_final: {}\n".format(self.epsilon_final) + \
                 "epsilon_steps: {}\n".format(self.epsilon_steps) + \
                 "Clip Grad: {}\n".format(self.clip_grad) + \
-                "Ornstein Noise?: {}\n".format(self.use_ornstein_noise) + \
-                "Zero Index Grads?: {}\n".format(self.zero_index_gradients) + \
                 "Seed: {}\n".format(self.seed) + \
                 "epsilon_decay: 1000\n"
         return desc
@@ -252,10 +217,6 @@ class PDQNAgent(Agent):
             if self.device == torch.device("cuda"):
                 torch.cuda.manual_seed(seed)
 
-    def _ornstein_uhlenbeck_noise(self, all_action_parameters):
-        """ Continuous action exploration using an Ornstein–Uhlenbeck process. """
-        return all_action_parameters.data.numpy() + (self.noise.sample() * self.action_parameter_range_numpy)
-
     def start_episode(self):
         pass
 
@@ -270,33 +231,22 @@ class PDQNAgent(Agent):
             state = torch.from_numpy(state).to(self.device)
             all_action_parameters = self.actor_param.forward(state)
 
-            # Hausknecht and Stone [2016] use epsilon greedy actions with uniform random action-parameter exploration
             rnd = self.np_random.uniform()
             if rnd < self.epsilon:
                 action = self.np_random.choice(self.num_actions)
-                if not self.use_ornstein_noise:
-                    all_action_parameters = torch.from_numpy(np.random.uniform(self.action_parameter_min_numpy,
-                                                                               self.action_parameter_max_numpy))
             else:
                 # select maximum action
                 Q_a = self.actor.forward(state.unsqueeze(0), all_action_parameters.unsqueeze(0))
                 Q_a = Q_a.detach().cpu().data.numpy()
                 action = np.argmax(Q_a)
 
-            # add noise only to parameters of chosen action
             all_action_parameters = all_action_parameters.cpu().data.numpy()
             offset = np.array([self.action_parameter_sizes[i] for i in range(action)], dtype=int).sum()
-            if self.use_ornstein_noise and self.noise is not None:
-                all_action_parameters[offset:offset + self.action_parameter_sizes[action]] += self.noise.sample()[
-                                                                                              offset:offset +
-                                                                                                     self.action_parameter_sizes[
-                                                                                                         action]]
             action_parameters = all_action_parameters[offset:offset + self.action_parameter_sizes[action]]
 
         return action, action_parameters, all_action_parameters
 
     def _invert_gradients(self, grad, vals, grad_type, inplace=True):
-        # 5x faster on CPU (for Soccer, slightly slower for Goal, Platform?)
         if grad_type == "actions":
             max_p = self.action_max
             min_p = self.action_min
@@ -325,20 +275,6 @@ class PDQNAgent(Agent):
             grad[~index] *= ((~index).float() * (vals - min_p) / rnge)[~index]
 
         return grad
-
-    def step(self, state, action, reward, next_state, next_action, terminal, time_steps=1):
-        act, all_action_parameters = action
-        self._step += 1
-
-        self._add_sample(state, np.concatenate(([act], all_action_parameters)).ravel(), reward, next_state,
-                         np.concatenate(([next_action[0]], next_action[1])).ravel(), terminal=terminal)
-        if self._step >= self.batch_size and self._step >= self.initial_memory_threshold:
-            self._optimize_td_loss()
-            self.updates += 1
-
-    def _add_sample(self, state, action, reward, next_state, next_action, terminal):
-        assert len(action) == 1 + self.action_parameter_size
-        self.replay_memory.append(state, action, reward, next_state, terminal=terminal)
 
     def _optimize_td_loss(self):
         if self._step < self.batch_size or self._step < self.initial_memory_threshold:

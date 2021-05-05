@@ -26,7 +26,7 @@ class PDQNNStepAgent(PDQNAgent):
     def __str__(self):
         desc = super().__str__()
         desc += "Beta: {}\n".format(self.beta)
-        print("actor is dueling.")
+
         return desc
 
     def _optimize_td_loss(self):

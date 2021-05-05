@@ -1,6 +1,3 @@
-"""
-Source: https://github.com/openai/baselines/blob/master/baselines/ddpg/ddpg.py
-"""
 import numpy as np
 import random
 
@@ -38,7 +35,7 @@ class RingBuffer(object):
     def clear(self):
         self.start = 0
         self.length = 0
-        self.data[:] = 0  # unnecessary, not freeing any memory, could be slow
+        self.data[:] = 0
 
 
 def array_min2d(x):
@@ -60,15 +57,8 @@ class Memory(object):
         self.terminals = RingBuffer(limit, shape=(1,))
 
     def sample(self, batch_size, random_machine=np.random):
-        # Draw such that we always have a proceeding element.
-        # batch_idxs = random_machine.random_integers(self.nb_entries - 2, size=batch_size)
         batch_idxs = random_machine.random_integers(low=0, high=self.nb_entries - 1, size=batch_size)
 
-        '''states_batch = array_min2d(self.states.get_batch(batch_idxs))
-        actions_batch = array_min2d(self.actions.get_batch(batch_idxs))
-        rewards_batch = array_min2d(self.rewards.get_batch(batch_idxs))
-        next_states_batch = array_min2d(self.next_states.get_batch(batch_idxs))
-        terminals_batch = array_min2d(self.terminals.get_batch(batch_idxs))'''
         states_batch = self.states.get_batch(batch_idxs)
         actions_batch = self.actions.get_batch(batch_idxs)
         rewards_batch = self.rewards.get_batch(batch_idxs)
@@ -119,16 +109,9 @@ class MemoryV2(object):
         self.terminals = RingBuffer(limit, shape=(1,))
 
     def sample(self, batch_size, random_machine=np.random):
-        # Draw such that we always have a proceeding element.
-        # batch_idxs = random_machine.random_integers(self.nb_entries - 2, size=batch_size)
         batch_idxs = random_machine.choice(self.nb_entries, size=batch_size)
         # batch_idxs = random_machine.choice(self.nb_entries, weights=[i/self.nb_entries for i in range(self.nb_entries)], size=batch_size)
 
-        '''states_batch = array_min2d(self.states.get_batch(batch_idxs))
-        actions_batch = array_min2d(self.actions.get_batch(batch_idxs))
-        rewards_batch = array_min2d(self.rewards.get_batch(batch_idxs))
-        next_states_batch = array_min2d(self.next_states.get_batch(batch_idxs))
-        terminals_batch = array_min2d(self.terminals.get_batch(batch_idxs))'''
         states_batch = self.states.get_batch(batch_idxs)
         actions_batch = self.actions.get_batch(batch_idxs)
         rewards_batch = self.rewards.get_batch(batch_idxs)
@@ -176,16 +159,9 @@ class MemoryNStepReturns(object):
         self.n_step_returns = RingBuffer(limit, shape=(1,)) if n_step_returns else None
 
     def sample(self, batch_size, random_machine=np.random):
-        # Draw such that we always have a proceeding element.
-        # batch_idxs = random_machine.random_integers(self.nb_entries - 2, size=batch_size)
         batch_idxs = random_machine.choice(self.nb_entries, size=batch_size)
         # batch_idxs = random_machine.choice(self.nb_entries, weights=[i/self.nb_entries for i in range(self.nb_entries)], size=batch_size)
 
-        '''states_batch = array_min2d(self.states.get_batch(batch_idxs))
-        actions_batch = array_min2d(self.actions.get_batch(batch_idxs))
-        rewards_batch = array_min2d(self.rewards.get_batch(batch_idxs))
-        next_states_batch = array_min2d(self.next_states.get_batch(batch_idxs))
-        terminals_batch = array_min2d(self.terminals.get_batch(batch_idxs))'''
         states_batch = self.states.get_batch(batch_idxs)
         actions_batch = self.actions.get_batch(batch_idxs)
         rewards_batch = self.rewards.get_batch(batch_idxs)
