@@ -1,15 +1,17 @@
-import os
-import click
-import time
 import datetime
-from utils import ClickPythonLiteralOption
-from wrappers import SoccerScaledParameterisedActionWrapper
+import os
+import time
+
+import click
 import gym
 import gym_soccer
-from gym.wrappers import Monitor
-from agents.nstep_pdqn import PDQNNStepAgent
 import numpy as np
+from gym.wrappers import Monitor
 from torch.utils.tensorboard import SummaryWriter
+
+from agents.nstep_pdqn import PDQNNStepAgent
+from utils import ClickPythonLiteralOption
+from wrappers import SoccerScaledParameterisedActionWrapper
 
 SEQUENCE = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 

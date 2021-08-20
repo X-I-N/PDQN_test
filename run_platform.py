@@ -1,14 +1,17 @@
-import os
-import numpy as np
-import gym
-import torch
-import datetime
 import argparse
+import datetime
+import os
+
+import gym
 import gym_platform
+import numpy as np
+import torch
 from gym.wrappers import Monitor
 from torch.utils.tensorboard import SummaryWriter
+
 from agents.pdqn import PDQNAgent_v1
-from wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper, PlatformFlattenedActionWrapper
+from wrappers import (PlatformFlattenedActionWrapper,
+                      ScaledParameterisedActionWrapper, ScaledStateWrapper)
 
 SEQUENCE = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
